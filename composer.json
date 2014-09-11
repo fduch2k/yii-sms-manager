@@ -1,0 +1,19 @@
+{
+    "name": "fduch2k/yii-sms-manager",
+    "description": "Yii Component for sending SMS with gateway balancing and events for low balance alert",
+    "minimum-stability": "stable",
+    "authors": [
+        {
+            "name": "Alexander Hramov",
+            "email": alexander.hramov@gmail.com
+        }
+    ],
+    "type": "library",
+    "keywords": ["yii", "sms", "atompark", "epochta", "smsfeedback"],
+    "license": "MIT",
+    "autoload": {
+        "classmap": [
+            "src/"
+        ]
+    }
+}
