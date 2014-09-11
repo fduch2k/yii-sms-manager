@@ -6,6 +6,11 @@
         {
             "name": "Alexander Hramov",
             "email": alexander.hramov@gmail.com
+            "role": "lead developer"
+        },
+        {
+            "name": "Victor Tuyrin",
+            "role": "developer"
         }
     ],
     "type": "library",
@@ -15,5 +20,8 @@
         "classmap": [
             "src/"
         ]
+    }
+    "require": {
+        "php": ">=5.1.0"
     }
 }
