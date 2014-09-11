@@ -20,7 +20,7 @@
         "classmap": [
             "src/"
         ]
-    }
+    },
     "require": {
         "php": ">=5.1.0"
     }
