@@ -14,20 +14,6 @@ class TSAtomParkGateway extends TSSmsGateway
     const BALANCE = 'BALANCE';
     const CREDITPRICE = 'CREDITPRICE';
 
-    private $_body = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><SMS>\n{body}\n</SMS>";
-    private $_operations = "<operations>\n{operations}\n</operations>\n";
-    private $_operation = '<operation>{operation}</operation>';
-    private $_auth = "<authentification>\n<username>{username}</username>\n<password>{password}</password>\n</authentification>\n";
-
-    // SEND
-    private $_sms = "<message>\n<sender>{sender}</sender>\n<text><![CDATA[{text}]]></text>\n</message>\n";
-    private $_numbers = "<numbers>\n{numbers}</numbers>";
-    private $_number = "<number messageID=\"{messageid}\" variables=\"{variables}\">{number}</number>\n";
-
-    // GETSTATUS
-    //private $_statistics = "<statistics>\n{messages}</statistics>";
-    //private $_messageid = "<messageid>{messageid}</messageid>\n";
-
     public function getName()
     {
         return "Atompark";
@@ -56,50 +42,93 @@ class TSAtomParkGateway extends TSSmsGateway
         return $response;
     }
 
+    private function createOperationsElement(DOMDocument $doc, Array $operations)
+    {
+        $operations = new DOMElement('operations');
+        foreach ($operations as $operation) {
+            $operations->appendChild($doc->createElement('operation', $operation));
+        }
+        return $operations;
+    }
+
+    private function createAuthElement(DOMDocument $doc)
+    {
+        $authentification = $doc->createElement('authentification');
+        $authentification->appendChild($doc->createElement('username', $this->username));
+        $authentification->appendChild($doc->createElement('password', $this->password));
+        return $authentification;
+    }
+
+    private function parseResponse($responseText)
+    {
+        $result = false;
+        $response = new DOMDocument('1.0', 'UTF-8');
+        if ($response->loadXML($responseText)) {
+            $statuses = $response->getElementsByTagName('status');
+            $status = $statuses->length > 0 ? intval($statuses->item(0)->nodeValue) : '';
+            $credits = $response->getElementsByTagName('credits');
+            $credit = $credits->length > 0 ? floatval($credits->item(0)->nodeValue) : '';
+            $result = array('status'=>$status, 'credits'=>$credit);
+        }
+        return $result;
+    }
+
     public function send($phones, $text)
     {
-        $operations = strtr($this->_operations, array('{operations}' => strtr($this->_operation, array('{operation}' => self::SEND))));
-        $sms = strtr($this->_sms, array('{text}' => $text, '{sender}' => $this->sender));
+        $request = new DOMDocument("1.0", "UTF-8");
+        $requestBody = $request->createElement('SMS');
+        $requestBody->appendChild($this->createOperationsElement(array(self::SEND)));
+        $requestBody->appendChild($this->createAuthElement());
+        $request->appendChild($requestBody);
+
+        $sms = $request->createElement('message');
+        $sms->appendChild($request->createElement('sender', $this->sender));
+        $textElement = $request->createElement('text');
+        $textElement->appendChild(new DOMCdataSection($text));
+        $sms->appendChild($textElement);
+        $requestBody->appendChild($sms);
+
         if (is_array($phones) == false) {
             $phones = array($phones => array());
         }
 
-        $number = '';
+        $numbers = $request->createElement('numbers');
         foreach ($phones as $phone => $value) {
-            $number .= strtr($this->_number, array(
-                    '{number}' => $phone,
-                    '{variables}' => implode(';', CPropertyValue::ensureArray($value)) . ';',
-                    '{messageid}' => md5($phone),
-                ));
+            $variables = implode(';', CPropertyValue::ensureArray($value)) . ';';
+            $number = $request->createElement('number', $phone);
+            $number->setAttribute('messageid', md5($phone.date().$variables));
+            $number->setAttribute('variables', $variables);
+            $numbers->appendChild($number);
         }
+        $requestBody->appendChild($numbers);
 
-        $numbers = strtr($this->_numbers, array('{numbers}' => $number));
-        $result = strtr($this->_body, array('{body}' => $operations . $this->auth . $sms . $numbers));
+        $responseText = $this->doRequest($request->saveXML());
+        $result = $this->parseResponse($responseText);
 
-        $response = $this->doRequest($result);
-
-        preg_match('/<status>(.+)<\/status>.*<credits>(.+)<\/credits>/ism', $response, $match);
-
-        $status = $match[1];
-        $ok = (bool) ($status > 0);
+        $status = $result['status'];
+        $ok = (bool)($status > 0);
         $needSmsAlert = ($ok == false) && ($status != -4);
 
-        $operations = strtr($this->_operations, array('{operations}' => strtr($this->_operation, array('{operation}' => self::BALANCE))));
-        $result = strtr($this->_body, array('{body}' => $operations . $this->auth));
-        $balanceResponse = $this->doRequest($result);
+        $credits = $this->balance();
 
-        $match = null;
-        preg_match('/<status>(.+)<\/status>.*<credits>(.+)<\/credits>/ism', $balanceResponse, $match);
-        $credits = $match[2];
-
-        return array('status' => $status, 'ok' => $ok, 'responseText' => $response, 'credits' => $credits,
+        return array('status' => $status, 'ok' => $ok, 'responseText' => $responseText, 'credits' => $credits,
             'needSmsAlert' => $needSmsAlert);
     }
 
-    protected function getAuth()
+    public function balance()
     {
-        $result = strtr($this->_auth, array('{username}' => $this->username, '{password}' => $this->password));
-        return $result;
+        $request = new DOMDocument("1.0", "UTF-8");
+        $requestBody = $request->createElement('SMS');
+        $requestBody->appendChild($this->createOperationsElement(array(self::BALANCE)));
+        $requestBody->appendChild($this->createAuthElement());
+        $request->appendChild($requestBody);
+
+        $responseText = $this->doRequest($request->saveXML());
+        $result = $this->parseResponse($responseText);
+        if ($result['status'] === 0) {
+            return $result['credits'];
+        }
+        return false;
     }
 
     public function command($operations, $params)
