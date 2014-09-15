@@ -2,10 +2,10 @@
 
 class TSSmsFeedBackGateway extends TSSmsGateway
 {
-    const SEND_URL = 'http://json.api.smsfeedback.ru/send/';
-    const CREDITS_URL = 'http://json.api.smsfeedback.ru/credits/';
+    const SEND_URL = 'http://api.smsfeedback.ru/messages/v2/send.json';
+    const CREDITS_URL = 'http://api.smsfeedback.ru/messages/v2/balance.json';
 
-    private function getUrl($url, $args)
+    private function doRequest($url, $args)
     {
         $argsJson = CJSON::encode($args);
 
@@ -27,7 +27,7 @@ class TSSmsFeedBackGateway extends TSSmsGateway
         }
         curl_close($curl);
 
-        return $response;
+        return CJSON::decode($response);
     }
 
     public function getName()
@@ -50,16 +50,18 @@ class TSSmsFeedBackGateway extends TSSmsGateway
                 $i++;
             }
 
-            $args = array('messages' => array(array(
-                        'clientId' => $sender,
-                        'phone' => $phone,
-                        'text' => $text,
-                        'username' => $this->username,
-                        'password' => $this->password,
-                    )));
+            $args = array(
+                'login' => $this->username,
+                'password' => $this->password,
+                'messages' => array(array(
+                    'clientId' => $sender,
+                    'phone' => $phone,
+                    'text' => $text,
+                ))
+            );
 
-            $responseText = $this->getUrl(self::SEND_URL, $args);
-            $response = CJSON::decode($responseText);
+            $response = $this->doRequest(self::SEND_URL, $args);
+            $responseText = CJSON::encode($response);
 
             $resultStatus = false;
             $credits = 0;
@@ -75,12 +77,14 @@ class TSSmsFeedBackGateway extends TSSmsGateway
 
                 $resultStatus = $status == 'accepted';
 
-                $response = $this->getUrl(self::CREDITS_URL, array());
+                $response = $this->doRequest(self::CREDITS_URL, array(
+                    'login' => $this->username,
+                    'password' => $this->password,
+                ));
 
-                if (isset($response['credits'])) {
-                    $credits = $response['credits'];
+                if (isset($response['balance'])) {
+                    $credits = $response['balance'][0]['balance'];
                 } else {
-
                     throw new Exception('No credits in response');
                 }
             }
