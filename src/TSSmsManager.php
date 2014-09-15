@@ -4,7 +4,7 @@ class TSSmsManager extends CApplicationComponent
 {
 
     public $alertRepeatInterval = '00:10:00';
-    public $maxBlockTime = '00:51:00';
+    public $maxBlockTime = '00:10:00';
     public $alertEmail = '';
     public $alertPhone = '';
     public $gateways = array();
@@ -68,8 +68,9 @@ class TSSmsManager extends CApplicationComponent
     {
         $minCredit = floatval($this->gatewayMinCredit);
         $gatewayName = $gateway->getName();
-        $params = array('{gatewayName}' => $gatewayName, '{credits}' => $credits, '{minCredits}' => $minCredit);
-        $text = Yii::t('TSSmsManager', 'Мало денег на счету смс-провайдера {gatewayName}: {credits}. Для стабильной работы нужно хотя бы {minCredits}', $params);
+
+        $text = 'Мало денег на счету смс-провайдера {gatewayName}: {credits}. Для стабильной работы нужно хотя бы {minCredits}';
+        $text = Yii::t('TSSmsManager', $text, array('{gatewayName}' => $gatewayName, '{credits}' => $credits, '{minCredits}' => $minCredit));
 
         $this->sendAlertLow($gateway, $text);
     }
@@ -132,6 +133,7 @@ class TSSmsManager extends CApplicationComponent
     private function getNextSmsGateway($index)
     {
         $indexStart = null;
+        $gateway = null;
 
         while (true) {
             $index++;
@@ -199,6 +201,7 @@ class TSSmsManager extends CApplicationComponent
             $result = $gateway->send($phones, $text);
             $credits = floatval($result['credits']);
 
+            $this->log("Response text {$result['responseText']}");
             if ($result['ok']) {
                 $this->log("Send ok. Credits on account: $credits, min credits: $minCredit");
 
@@ -209,9 +212,9 @@ class TSSmsManager extends CApplicationComponent
 
                 break;
             } else {
-                $this->log("Bad send result: " . $result['status'] . ". Sending gateway alert");
+                $this->log("Bad send result: {$result['status']}. Sending gateway alert");
                 $this->sendAlert($gateway, $result);
-                $this->log("Block gateway " . get_class($gateway));
+                $this->log("Block gateway {$gateway->getName()}");
 
                 $this->blockGateway($index);
             }
