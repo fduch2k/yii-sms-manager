@@ -2,11 +2,6 @@
 
 class TSSmsFeedBackGateway extends TSSmsGateway
 {
-
-    public $username;
-    public $password;
-    public $sender;
-
     const SEND_URL = 'http://json.api.smsfeedback.ru/send/';
     const CREDITS_URL = 'http://json.api.smsfeedback.ru/credits/';
 

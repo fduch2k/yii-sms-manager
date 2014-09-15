@@ -4,11 +4,6 @@
 
 class TSAtomParkGateway extends TSSmsGateway
 {
-
-    public $username;
-    public $password;
-    public $sender;
-
     const SEND = 'SEND';
     const GETSTATUS = 'GETSTATUS';
     const BALANCE = 'BALANCE';
