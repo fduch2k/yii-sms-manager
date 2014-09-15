@@ -35,27 +35,22 @@ class TSSmsManager extends CApplicationComponent
 
     private function sendAlertLow($gateway, $alertText)
     {
-        $email = $this->alertEmail;
-        $phone = $this->alertPhone;
-
         $className = get_class($gateway);
         $textHash = md5($alertText);
 
         $id = $className . '-lastAlert-' . $textHash;
-        $lastAlertTime = Yii::app()->cache->get($id);
+        $lastAlertTime = Yii::app()->getGlobalState($id);
 
         if ($lastAlertTime === false) {
             $lastAlertTime = 0;
         }
 
         $this->log('time = ' . time() . ' lastAlertTime = ' . $lastAlertTime . ' alertRepeatInterval = ' . $this->alertRepeatInterval);
-        //Сверяем время последней отправки этого текста для этого гейта
         if ((time() - $lastAlertTime) > $this->alertRepeatInterval) {
-            Yii::app()                          ->cache->set($id, time());
-            //Пробуем через смс-гейты отправить
+             Yii::app()->setGlobalState($id, time());
             $ok = false;
             foreach ($this->gateways as $gateway) {
-                $result = $gateway->send(array($phone => array()), $alertText);
+                $result = $gateway->send(array($this->alertPhone => array()), $alertText);
                 $ok = $result['ok'];
                 if ($ok) {
                     break;
@@ -63,8 +58,7 @@ class TSSmsManager extends CApplicationComponent
             }
 
             $this->log('Send alert email');
-            //Ещё емайл до кучи пошлём
-            Yii::app()->mailer->sendMail($this->alertEmail, array($email), 'SMS Manager alert', $alertText);
+            mail($this->alertEmail, Yii::t('TSSmsManager', 'SMS Manager alert'), $alertText);
         } else {
             $this->log('Skip alert: ' . $alertText . ' unblock time for this alert: ' . date("h:i:s", $lastAlertTime + $this->alertRepeatInterval));
         }
@@ -74,9 +68,8 @@ class TSSmsManager extends CApplicationComponent
     {
         $minCredit = floatval($this->gatewayMinCredit);
         $gatewayName = $gateway->getName();
-
-        $text = 'Мало денег на счету смс-провайдера {gatewayName}: {credits}. Для стабильной работы нужно хотя бы {minCredits}';
-        $text = Yii::t('TSSmsManager', $text, array('{gatewayName}' => $gatewayName, '{credits}' => $credits, '{minCredits}' => $minCredit));
+        $params = array('{gatewayName}' => $gatewayName, '{credits}' => $credits, '{minCredits}' => $minCredit);
+        $text = Yii::t('TSSmsManager', 'Мало денег на счету смс-провайдера {gatewayName}: {credits}. Для стабильной работы нужно хотя бы {minCredits}', $params);
 
         $this->sendAlertLow($gateway, $text);
     }
@@ -104,7 +97,7 @@ class TSSmsManager extends CApplicationComponent
     private function isGatewayBlocked($index)
     {
         $id = 'gatewayBlockTime' . $index;
-        $blockTime = Yii::app()->cache->get($id);
+        $blockTime = Yii::app()->getGlobalState($id);
 
         $this->log(
             "isGatewayBlocked: block time for gateway index $index = " .
@@ -122,7 +115,7 @@ class TSSmsManager extends CApplicationComponent
         if ($isBlocked) {
             $this->log("Gateway still blocked");
         } else {
-            Yii::app()->cache->set($id, false);
+            Yii::app()->setGlobalState($id, false);
             $this->log("Gateway unblocked - time expired");
         }
 
@@ -133,7 +126,7 @@ class TSSmsManager extends CApplicationComponent
     {
         $id = 'gatewayBlockTime' . $index;
         $blockTime = time();
-        Yii::app()->cache->set($id, $blockTime);
+        Yii::app()->setGlobalState($id, $blockTime);
     }
 
     private function getNextSmsGateway($index)
@@ -153,8 +146,6 @@ class TSSmsManager extends CApplicationComponent
             if ($indexStart === null) {
                 $indexStart = $index;
             }
-
-            /////////
 
             $this->log("Gateway index to send: $index");
 
