@@ -1,6 +1,14 @@
 <?php
 
-//http://www.massmailsoftware.com/bulksmsandpager/smsapi.htm
+/**
+ * SMS ePochta v2 api gateway
+ *
+ * @link https://github.com/fduch2k/yii-sms-manager
+ * @author Alexander Hramov <alexander.hramov@gmail.com>
+ * @author Victor Tyurin
+ * @copyright Copyright (c) 2012-2014, TagShake Ltd.
+ * @license http://opensource.org/licenses/MIT
+ */
 
 class TSAtomParkGateway extends TSSmsGateway
 {
