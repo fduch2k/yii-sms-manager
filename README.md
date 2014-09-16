@@ -56,6 +56,14 @@ return array(
 
 This code will send 2 sms to $phoneNumber1 - 'Hello, Alex. Your password is qwerty' and $phoneNumber2 - 'Hello, Peter! Your password is 123456'
 ```php
-Yii::app()->sms->send(array(array($phoneNumber1=>array('Alex', 'qwerty'), $phoneNumber2=>array('Peter', '123456')))), 'Hello, %1%! Your password is %2%');
+Yii::app()->sms->send(
+    array(
+        array(
+            $phoneNumber1=>array('Alex', 'qwerty'), 
+            $phoneNumber2=>array('Peter', '123456')
+        )
+    ), 
+    'Hello, %1%! Your password is %2%'
+);
 ```
 
