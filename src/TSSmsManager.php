@@ -1,5 +1,15 @@
 <?php
 
+/**
+ * SMS Manager
+ *
+ * @link https://github.com/fduch2k/yii-sms-manager
+ * @author Alexander Hramov <alexander.hramov@gmail.com>
+ * @author Victor Tyurin
+ * @copyright Copyright (c) 2012-2014, TagShake Ltd.
+ * @license http://opensource.org/licenses/MIT
+ */
+
 class TSSmsManager extends CApplicationComponent
 {
 
@@ -10,12 +20,11 @@ class TSSmsManager extends CApplicationComponent
     public $gateways = array();
     public $gatewayMinCredit = 20;
 
-    const SMS_INTERVAL = 180;// 3 minutes
-
     public function init()
     {
         $this->maxBlockTime = $this->getTimeInterval($this->maxBlockTime);
         $this->alertRepeatInterval = $this->getTimeInterval($this->alertRepeatInterval);
+        $this->gatewayMinCredit = CPropertyValue::ensureFloat($this->gatewayMinCredit);
         $gateways = array();
         foreach ($this->gateways as $gateway) {
             $gateways[] = Yii::createComponent($gateway);
@@ -35,20 +44,15 @@ class TSSmsManager extends CApplicationComponent
 
     private function sendAlertLow($gateway, $alertText)
     {
-        $className = get_class($gateway);
         $textHash = md5($alertText);
 
-        $id = $className . '-lastAlert-' . $textHash;
-        $lastAlertTime = Yii::app()->getGlobalState($id);
+        $id = "{$gateway->getName()}-lastAlert-$textHash";
+        $lastAlertTime = Yii::app()->getGlobalState($id, 0);
 
-        if ($lastAlertTime === false) {
-            $lastAlertTime = 0;
-        }
-
-        $this->log('time = ' . time() . ' lastAlertTime = ' . $lastAlertTime . ' alertRepeatInterval = ' . $this->alertRepeatInterval);
-        if ((time() - $lastAlertTime) > $this->alertRepeatInterval) {
-             Yii::app()->setGlobalState($id, time());
-            $ok = false;
+        $currentTime = time();
+        $this->log('time = ' . $currentTime . ' lastAlertTime = ' . $lastAlertTime . ' alertRepeatInterval = ' . $this->alertRepeatInterval);
+        if (($currentTime - $lastAlertTime) > $this->alertRepeatInterval) {
+            Yii::app()->setGlobalState($id, $currentTime);
             foreach ($this->gateways as $gateway) {
                 $result = $gateway->send(array($this->alertPhone => array()), $alertText);
                 $ok = $result['ok'];
@@ -66,39 +70,44 @@ class TSSmsManager extends CApplicationComponent
 
     private function sendCreditsAlert($gateway, $credits)
     {
-        $minCredit = floatval($this->gatewayMinCredit);
-        $gatewayName = $gateway->getName();
-
-        $text = 'Мало денег на счету смс-провайдера {gatewayName}: {credits}. Для стабильной работы нужно хотя бы {minCredits}';
-        $text = Yii::t('TSSmsManager', $text, array('{gatewayName}' => $gatewayName, '{credits}' => $credits, '{minCredits}' => $minCredit));
+        $text = Yii::t(
+            'TSSmsManager',
+            'Мало денег на счету смс-провайдера {gatewayName}: {credits}. Для стабильной работы нужно хотя бы {minCredits}',
+            array(
+                '{gatewayName}' => $gateway->getName(),
+                '{credits}' => $credits,
+                '{minCredits}' => $this->gatewayMinCredit
+            )
+        );
 
         $this->sendAlertLow($gateway, $text);
     }
 
     private function sendAlert($gateway, $result)
     {
-        $gatewayName = $gateway->getName();
-        $credits = $result['credits'];
-        $status = $result['status'];
-        $response = $result['responseText'];
+        $messages = array(
+            'Не получилось послать смс через {gatewayName}. Код результата (статус): {status}. Ответ от сервера: {response}',
+            'Не получилось послать смс через {gatewayName}. Денег на счету: {credits}. Код результата (статус): {status}. Ответ от сервера: {response}',
+        );
 
-        if (is_numeric($credits)) {
-            $text = 'Не получилось послать смс через {gatewayName}. Денег на счету: {credits}. Код результата (статус): {status}. Ответ от сервера: {response}';
-        } else {
-
-            $text = 'Не получилось послать смс через {gatewayName}. Код результата (статус): {status}. Ответ от сервера: {response}';
-        }
-
-        $text = Yii::t('TSSmsManager', $text, array('{gatewayName}' => $gatewayName, '{credits}' => $credits,
-                'status' => $status, '{response}' => $response));
+        $text = Yii::t(
+            'TSSmsManager',
+            $messages[is_numeric($result['credits'])],
+            array(
+                '{gatewayName}' => $gateway->getName(),
+                '{credits}' => $result['credits'],
+                '{status}' => $result['status'],
+                '{response}' => $result['responseText']
+            )
+        );
 
         $this->sendAlertLow($gateway, $text);
     }
 
     private function isGatewayBlocked($index)
     {
-        $id = 'gatewayBlockTime' . $index;
-        $blockTime = Yii::app()->getGlobalState($id);
+        $id = "gatewayBlockTime$index";
+        $blockTime = Yii::app()->getGlobalState($id, 0);
 
         $this->log(
             "isGatewayBlocked: block time for gateway index $index = " .
@@ -116,7 +125,7 @@ class TSSmsManager extends CApplicationComponent
         if ($isBlocked) {
             $this->log("Gateway still blocked");
         } else {
-            Yii::app()->setGlobalState($id, false);
+            Yii::app()->setGlobalState($id, 0);
             $this->log("Gateway unblocked - time expired");
         }
 
@@ -125,9 +134,8 @@ class TSSmsManager extends CApplicationComponent
 
     private function blockGateway($index)
     {
-        $id = 'gatewayBlockTime' . $index;
-        $blockTime = time();
-        Yii::app()->setGlobalState($id, $blockTime);
+        $id = "gatewayBlockTime$index";
+        Yii::app()->setGlobalState($id, time());
     }
 
     private function getNextSmsGateway($index)
@@ -162,7 +170,6 @@ class TSSmsManager extends CApplicationComponent
         if ($gateway == null) {
             $this->log("All gateways are blocked");
 
-            //Все движки блокированы - берём просто следующий
             if ($index < count($this->gateways) - 1) {
                 $index = $indexStart + 1;
             } else {
@@ -195,15 +202,15 @@ class TSSmsManager extends CApplicationComponent
                 break;
             }
 
-            $minCredit = floatval($gateway->minCredit);
+            $minCredit = $gateway->minCredit;
 
-            $this->log("Sending sms using {$gateway->getName()}, minCredit = $minCredit");
+            $this->log("Sending sms using {$gateway->getName()}, minCredits = $minCredit");
             $result = $gateway->send($phones, $text);
             $credits = floatval($result['credits']);
 
             $this->log("Response text {$result['responseText']}");
             if ($result['ok']) {
-                $this->log("Send ok. Credits on account: $credits, min credits: $minCredit");
+                $this->log("Sent. Credits on account: $credits, minCredits: $minCredit");
 
                 if ($credits <= $minCredit) {
                     $this->log("Send credits alert");
